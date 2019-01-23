@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class Listener {
 
-    @KafkaListener(topics = "stats-input", groupId = "stats")
+    @KafkaListener(topics = "stats-output", groupId = "stats")
     public void process(String json) {
         System.out.println("RECEIVED json: " + json);
     }

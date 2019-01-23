@@ -1,19 +1,22 @@
 package io.dargenn.streams;
 
 import io.dargenn.streams.model.Stats;
-import lombok.AllArgsConstructor;
-import lombok.Data;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
-import org.apache.kafka.streams.kstream.*;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KeyValueMapper;
+import org.apache.kafka.streams.kstream.Reducer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.annotation.EnableKafkaStreams;
 import org.springframework.kafka.support.serializer.JsonSerde;
+
+import java.util.Properties;
 
 @Configuration
 @EnableKafka
@@ -21,16 +24,18 @@ import org.springframework.kafka.support.serializer.JsonSerde;
 public class StreamsConfiguration {
     @Bean
     public KStream<String, Stats> kStreamJson(StreamsBuilder builder) {
-        KStream<String, Stats> stream = builder.stream("stats-input", Consumed.with(Serdes.String(), new JsonSerde<>(Stats.class)));
+        Properties props = new Properties();
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "stats-streams");
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.99.100:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, new JsonSerde<>(Stats.class).getClass());
 
-        KTable<String, Stats> combinedDocuments = stream
-                .map(new TestKeyValueMapper())
-                .groupByKey()
-                .reduce(new TestReducer(), Materialized.<String, Stats, KeyValueStore<Bytes, byte[]>>as("streams-json-store"));
+        KStream<String, Stats> stream = builder.stream("stats-input", Consumed.with(Serdes.String(), new JsonSerde<>(Stats.class)))
+                .filter((s, stats) -> stats.getCpuUsage() > 0.8);
+        stream.to("stats-output");
 
-        combinedDocuments.toStream().to("stats-output", Produced.with(Serdes.String(), new JsonSerde<>(Stats.class)));
-
-        System.out.println("OUTPUT PROCESSED");
+        KafkaStreams streams = new KafkaStreams(builder.build(), props);
+        streams.start();
 
         return stream;
     }
